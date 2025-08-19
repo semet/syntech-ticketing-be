@@ -2,5 +2,11 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "project": ["src/**/*.ts"],
   "ignore": ["generated/**", "src/utils/database.ts"],
-  "ignoreDependencies": ["@commitlint/*", "prisma", "@prisma/*"]
+  "ignoreDependencies": [
+    "@commitlint/*",
+    "prisma",
+    "@prisma/*",
+    "@hono/*",
+    "openapi-types"
+  ]
 }

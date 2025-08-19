@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model WhiteLabel {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issues    Issue[]
+
+  @@map("white_labels")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issues    Issue[]
+
+  @@map("categories")
+}
+
+model Reporter {
+  id        String   @id @default(cuid())
+  name      String
+  nickname  String   @unique
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issues    Issue[]
+
+  @@map("reporters")
+}
+
+model Assignee {
+  id        String   @id @default(cuid())
+  name      String
+  nickname  String   @unique
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issues    Issue[]
+
+  @@map("assignees")
+}
+
+model Issue {
+  id               String     @id @default(cuid())
+  title            String
+  description      String
+  link             String
+  status           Int        @default(1)
+  whiteLabelId     String
+  whiteLabel       WhiteLabel @relation(fields: [whiteLabelId], references: [id])
+  priority         String
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  finishedAt       DateTime?
+  category         Category?  @relation(fields: [categoryId], references: [id])
+  categoryId       String?
+  reporter         Reporter   @relation(fields: [reporterNickname], references: [nickname])
+  reporterNickname String
+  assignee         Assignee   @relation(fields: [assigneeNickname], references: [nickname])
+  assigneeNickname String
+
+  @@map("issues")
+}
