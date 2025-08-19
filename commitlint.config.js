@@ -1,0 +1,88 @@
+export default {
+  extends: ['@commitlint/config-conventional'],
+
+  rules: {
+    'type-enum': [
+      2,
+      'always',
+      [
+        'feat',
+        'fix',
+        'docs',
+        'style',
+        'refactor',
+        'test',
+        'chore',
+        'perf',
+        'ci',
+        'build',
+        'revert',
+        'wip',
+      ],
+    ],
+    'type-case': [2, 'always', 'lower-case'],
+    'type-empty': [2, 'never'],
+    'scope-empty': [0, 'never'],
+    'scope-case': [2, 'always', 'lower-case'],
+    'scope-max-length': [2, 'always', 20],
+    'subject-case': [
+      2,
+      'never',
+      ['sentence-case', 'start-case', 'pascal-case', 'upper-case'],
+    ],
+    'subject-empty': [2, 'never'],
+    'subject-full-stop': [2, 'never', '.'],
+    'subject-max-length': [2, 'always', 50],
+    'subject-min-length': [2, 'always', 3],
+    'header-max-length': [2, 'always', 72],
+    'header-min-length': [2, 'always', 10],
+    'body-leading-blank': [2, 'always'],
+    'body-max-line-length': [2, 'always', 100],
+    'body-case': [0, 'never'],
+    'footer-leading-blank': [2, 'always'],
+    'footer-max-line-length': [2, 'always', 100],
+    'references-empty': [0, 'never'],
+    'signed-off-by': [0, 'never'],
+  },
+
+  parserPreset: {
+    parserOpts: {
+      headerPattern: /^(\w*)(?:\((.*)\))?: (.*)$/,
+      headerCorrespondence: ['type', 'scope', 'subject'],
+      referenceActions: [
+        'close',
+        'closes',
+        'closed',
+        'fix',
+        'fixes',
+        'fixed',
+        'resolve',
+        'resolves',
+        'resolved',
+      ],
+      issuePrefixes: ['#'],
+      noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+      fieldPattern: /^-(.*?)-$/,
+      revertPattern:
+        /^(?:Revert|revert:)\s"?([\s\S]+?)"?\s*This reverts commit (\w*)\./i,
+      revertCorrespondence: ['header', 'hash'],
+      warn() {},
+      mergePattern: null,
+      mergeCorrespondence: null,
+    },
+  },
+
+  ignores: [
+    (message) => message.includes('Merge'),
+    (message) => message.includes('Initial commit'),
+    (message) => message.includes('[skip ci]'),
+    (message) => message.includes('[ci skip]'),
+    (message) => message.includes('dependabot'),
+    (message) => message.includes('renovate'),
+    (message) => /^(Release|Tag) v?\d+\.\d+\.\d+/.test(message),
+  ],
+
+  defaultIgnores: true,
+  helpUrl:
+    'https://github.com/conventional-changelog/commitlint/#what-is-commitlint',
+}
