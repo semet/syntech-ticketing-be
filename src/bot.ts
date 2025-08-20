@@ -8,7 +8,14 @@ interface MessageReactionContext extends Context {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chat: any
     message_id: number
-    user: { id: number }
+    user: {
+      id: number
+      is_bot: boolean
+      first_name: string
+      last_name: string
+      username: string
+      language_code: string
+    }
     date: number
     old_reaction: Array<{ type: string; emoji?: string }>
     new_reaction: Array<{ type: string; emoji?: string }>
@@ -51,11 +58,38 @@ function logChatInfo(context: Context): void {
 }
 
 bot.on('message_reaction', async (context: MessageReactionContext) => {
-  xior.get('http://localhost:3000/issues').then(console.log)
-  try {
-    const chatId = context.chat?.id?.toString()
-    if (!chatId) return
+  const chatId = context.chat
+  if (!chatId) return
+  const output = {
+    messageOwnerUsername: context.messageReaction.user.username || 'unknown',
+    reactionEmoji:
+      context.messageReaction.new_reaction
+        .map((r) => r.emoji)
+        .filter(Boolean)
+        .join(', ') || 'none',
+    link: `https://t.me/c/${context.chat.id}/${context.messageReaction.message_id}`,
+    reactorUsername: context.messageReaction.user.username || 'unknown',
+    messageDate: new Date(context.messageReaction.date * 1000).toISOString(),
+    messageId: context.messageReaction.message_id,
+    whitelabel: {
+      id: 'Test WL',
+      name: 'test-whitelabel-1',
+    },
+    title: 'Title gw',
+    assignee: {
+      id: '',
+      name: '',
+    },
+    priority: 3,
+    status: 1,
+    category: { id: '', name: 'Uncategorized' },
+  }
 
+  console.log('sending output', output)
+
+  xior.post('http://localhost:3000/stream/issue', output)
+
+  try {
     logChatInfo(context)
 
     if (!isChatAllowed(chatId)) {

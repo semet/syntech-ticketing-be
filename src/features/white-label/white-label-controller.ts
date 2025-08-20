@@ -3,12 +3,12 @@ import { Context } from 'hono'
 import { prisma } from '@/utils/database'
 
 export const WhiteLabelController = async (c: Context) => {
-  const whiteLabels = await prisma.whiteLabel.findMany({
+  const whitelabels = await prisma.whitelabel.findMany({
     orderBy: {
       name: 'asc',
     },
   })
   return c.json({
-    data: whiteLabels,
+    data: whitelabels,
   })
 }

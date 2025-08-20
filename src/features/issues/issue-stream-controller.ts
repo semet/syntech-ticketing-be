@@ -3,19 +3,18 @@
 // features/issues/issue-stream-controller.ts
 import type { Context } from 'hono'
 
-interface Issue {
+export interface Issue {
   id: string
   title: string
-  status: string
-  assigneeNickname?: string
-  reporterNickname?: string
-  whiteLabelId?: string
+  status: number
+  priority: number
   createdAt: Date
+  link: string
   category?: {
     id: string
     name: string
   }
-  whiteLabel?: {
+  whitelabel?: {
     id: string
     name: string
   }
@@ -27,7 +26,6 @@ interface Issue {
   reporter?: {
     id: string
     name: string
-    email: string
   }
 }
 
@@ -38,7 +36,8 @@ export const IssueStreamController = async (c: Context) => {
   c.header('Cache-Control', 'no-cache')
   c.header('Connection', 'keep-alive')
   c.header('Access-Control-Allow-Origin', '*')
-  c.header('Access-Control-Allow-Headers', 'Cache-Control')
+  c.header('Access-Control-Allow-Headers', '*')
+  c.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
 
   const stream = new ReadableStream({
     start(controller) {

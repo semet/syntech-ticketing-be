@@ -8,14 +8,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model WhiteLabel {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  issues    Issue[]
+model Whitelabel {
+  id             String   @id @default(cuid())
+  name           String
+  whitelabelName String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  issues         Issue[]
 
-  @@map("white_labels")
+  @@map("white_labels") // ✅ correct
 }
 
 model Category {
@@ -29,10 +30,8 @@ model Category {
 }
 
 model Reporter {
-  id        String   @id @default(cuid())
+  id        String  @unique
   name      String
-  nickname  String   @unique
-  email     String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   issues    Issue[]
@@ -41,10 +40,8 @@ model Reporter {
 }
 
 model Assignee {
-  id        String   @id @default(cuid())
+  id        String  @unique
   name      String
-  nickname  String   @unique
-  email     String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   issues    Issue[]
@@ -58,18 +55,19 @@ model Issue {
   description      String
   link             String
   status           Int        @default(1)
-  whiteLabelId     String
-  whiteLabel       WhiteLabel @relation(fields: [whiteLabelId], references: [id])
-  priority         String
+  whitelabelId     String
+  whitelabel       Whitelabel @relation(fields: [whitelabelId], references: [id])
+  categoryId       String?
+  category         Category?  @relation(fields: [categoryId], references: [id])
+  reporterId       String
+  reporter         Reporter   @relation(fields: [reporterId], references: [id])
+  assigneeId       String
+  assignee         Assignee   @relation(fields: [assigneeId], references: [id])
+  priority         Int        @default(3)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   finishedAt       DateTime?
-  category         Category?  @relation(fields: [categoryId], references: [id])
-  categoryId       String?
-  reporter         Reporter   @relation(fields: [reporterNickname], references: [nickname])
-  reporterNickname String
-  assignee         Assignee   @relation(fields: [assigneeNickname], references: [nickname])
-  assigneeNickname String
 
   @@map("issues")
 }
+

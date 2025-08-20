@@ -10,8 +10,8 @@ export const IssueController = async (c: Context) => {
     ? Number.parseInt(c.req.query('limit') as string, 10)
     : 10
 
-  const whiteLabel = c.req.query('whiteLabel')
-    ? (c.req.query('whiteLabel') as string)
+  const whitelabel = c.req.query('whitelabel')
+    ? (c.req.query('whitelabel') as string)
     : undefined
 
   const assignee = c.req.query('assignee')
@@ -25,21 +25,31 @@ export const IssueController = async (c: Context) => {
   const [issues, meta] = await prisma.issue
     .paginate({
       where: {
-        ...(whiteLabel ? { whiteLabelId: whiteLabel } : {}),
-        ...(assignee ? { assigneeNickname: assignee } : {}),
-        ...(reporter ? { reporterNickname: reporter } : {}),
+        ...(whitelabel ? { whitelabelId: whitelabel } : {}),
+        ...(assignee ? { assigneeId: assignee } : {}),
+        ...(reporter ? { reporterId: reporter } : {}),
       },
       orderBy: {
         createdAt: 'desc',
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        link: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        finishedAt: true,
+
         category: {
           select: {
             id: true,
             name: true,
           },
         },
-        whiteLabel: {
+        whitelabel: {
           select: {
             id: true,
             name: true,
@@ -49,14 +59,12 @@ export const IssueController = async (c: Context) => {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
         reporter: {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
       },
