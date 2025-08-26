@@ -41,20 +41,18 @@ export const TestIssueController = async (c: Context) => {
 
   const body: CreateIssueRequest = await c.req.json()
 
-  const whitelabel = await prisma.whitelabel.upsert({
-    where: { id: body.whitelabel.id },
-    update: {
-      name: body.whitelabel.name,
-      updatedAt: new Date(),
-    },
-    create: {
-      id: body.whitelabel.id,
-      name: body.whitelabel.name,
-      whitelabelName: body.whitelabel.name,
-    },
-  })
-
-  console.log(body)
+  // const whitelabel = await prisma.whitelabel.upsert({
+  //   where: { id: body.whitelabel.id },
+  //   update: {
+  //     name: body.whitelabel.name,
+  //     updatedAt: new Date(),
+  //   },
+  //   create: {
+  //     id: body.whitelabel.id,
+  //     name: body.whitelabel.name,
+  //     whitelabelName: body.whitelabel.name,
+  //   },
+  // })
 
   broadcastIssueUpdate(
     {

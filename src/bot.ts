@@ -1,11 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
 import { Telegraf, Context } from 'telegraf'
 import xior from 'xior'
 
-// Types
+import { parseMessage } from './utils/functions'
 interface MessageReactionContext extends Context {
   messageReaction: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chat: any
     message_id: number
     user: {
@@ -50,7 +50,7 @@ function isChatAllowed(chatId: string | number): boolean {
 }
 
 // Debug function to log chat information
-function logChatInfo(context: Context): void {
+function logChatInfo(context: Context | MessageReactionContext): void {
   if (DEBUG_MODE) {
     const chat = context.chat
     console.log(`📍 Chat Info: ID: ${chat?.id}, Type: ${chat?.type}`)
@@ -58,68 +58,65 @@ function logChatInfo(context: Context): void {
 }
 
 bot.on('message_reaction', async (context: MessageReactionContext) => {
-  const chatId = context.chat
-  if (!chatId) return
-  const output = {
-    messageOwnerUsername: context.messageReaction.user.username || 'unknown',
-    reactionEmoji:
-      context.messageReaction.new_reaction
-        .map((r) => r.emoji)
-        .filter(Boolean)
-        .join(', ') || 'none',
-    link: `https://t.me/c/${context.chat.id}/${context.messageReaction.message_id}`,
-    reactorUsername: context.messageReaction.user.username || 'unknown',
-    messageDate: new Date(context.messageReaction.date * 1000).toISOString(),
-    messageId: context.messageReaction.message_id,
-    whitelabel: {
-      id: 'Test WL',
-      name: 'test-whitelabel-1',
-    },
-    title: 'Title gw',
-    assignee: {
-      id: '',
-      name: '',
-    },
-    priority: 3,
-    status: 1,
-    category: { id: '', name: 'Uncategorized' },
-  }
-
-  console.log('sending output', output)
-
-  xior.post('http://localhost:3000/stream/issue', output)
+  const chat = context.chat
+  const messageId = context.messageReaction.message_id
+  if (!chat || !messageId) return
 
   try {
     logChatInfo(context)
-
-    if (!isChatAllowed(chatId)) {
+    if (!isChatAllowed(context.chat.id)) {
       if (DEBUG_MODE) {
-        console.log(`🚫 Ignoring reaction from non-tracked chat: ${chatId}`)
+        console.log(`🚫 Ignoring reaction from non-tracked chat: ${chat}`)
       }
       return
     }
 
-    const messageId = context.messageReaction.message_id
-    const userId = context.messageReaction.user.id
-    const newReaction = context.messageReaction.new_reaction
-    const oldReaction = context.messageReaction.old_reaction
+    let messageContent = ''
 
-    console.log('🎯 REACTION DATA:', {
-      chatId,
+    const forwardedMessage = (await context.telegram.forwardMessage(
+      chat.id,
+      chat.id,
       messageId,
-      userId,
-      timestamp: new Date().toISOString(),
-      oldReaction: oldReaction?.map((r) => r.emoji).filter(Boolean),
-      newReaction: newReaction?.map((r) => r.emoji).filter(Boolean),
-      trackedEmojisOnly: {
-        added: newReaction
-          ?.map((r) => r.emoji)
-          .filter((emoji) => emoji && TRACKED_EMOJIS.includes(emoji)),
-        removed: oldReaction
-          ?.map((r) => r.emoji)
-          .filter((emoji) => emoji && TRACKED_EMOJIS.includes(emoji)),
+      { disable_notification: true },
+    )) as any
+
+    messageContent =
+      forwardedMessage.text ||
+      forwardedMessage.caption ||
+      forwardedMessage.sticker?.emoji ||
+      '[Media/Other content]'
+
+    await context.telegram.deleteMessage(chat.id, forwardedMessage.message_id)
+
+    const parsed = parseMessage(messageContent)
+
+    const output = {
+      messageOwnerUsername: context.messageReaction.user.username || 'unknown',
+      reactionEmoji:
+        context.messageReaction.new_reaction
+          .map((r) => r.emoji)
+          .filter(Boolean)
+          .join(', ') || 'none',
+      link: `https://t.me/c/${context.chat.id}/${context.messageReaction.message_id}`,
+      reactorUsername: context.messageReaction.user.username || 'unknown',
+      messageDate: new Date(context.messageReaction.date * 1000).toISOString(),
+      messageId: context.messageReaction.message_id,
+      whitelabel: {
+        id: parsed.whitelabel,
+        name: parsed.merchant.toString(),
       },
-    })
+      title: messageContent.slice(0, 26) + '...',
+      assignee: {
+        id: '',
+        name: '',
+      },
+      priority: 3,
+      status: 1,
+      category: { id: '', name: 'Uncategorized' },
+      description: messageContent,
+    }
+
+    xior.post('http://localhost:3000/stream/issue', output)
   } catch (error) {
     console.error('Error processing reaction:', error)
   }
