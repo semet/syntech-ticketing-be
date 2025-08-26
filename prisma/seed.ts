@@ -3,49 +3,58 @@
 /* eslint-disable no-console */
 import { faker } from '@faker-js/faker'
 
+import { whitelabels } from '@/constants/whitelabels'
 import { PrismaClient } from '@generated/prisma'
 
 const prisma = new PrismaClient()
-const NO_SEED = true
+const NO_SEED = false
 
 async function main() {
-  if (NO_SEED === true) {
+  if (NO_SEED) {
     console.log('Skipping seed...')
     return
   }
-  // Create 10 WhiteLabels
+  // Create WhiteLabels
   const whiteLabels = []
-  for (let index = 1; index <= 10; index++) {
+  const availableWhitelabels = whitelabels
+  for (const availableWhitelabel of availableWhitelabels) {
     const whiteLabel = await prisma.whitelabel.create({
       data: {
-        name: faker.company.name(),
-        whitelabelName: faker.company.name(),
-        id: faker.string.uuid(),
+        id: availableWhitelabel.id.toString(),
+        name: availableWhitelabel.name,
+        whitelabelName: availableWhitelabel.name,
       },
     })
     whiteLabels.push(whiteLabel)
   }
 
-  // Create 10 Categories
   const categories = []
-  for (let index = 0; index < 10; index++) {
-    const category = await prisma.category.create({
-      data: {
-        name: faker.helpers.arrayElement(['Issue', 'Improvement']),
+  const availableCategories = [
+    { id: '1', name: 'Uncategorized' },
+    { id: '2', name: 'Issue' },
+    { id: '3', name: 'Improvement' },
+  ]
+
+  for (const availableCategory of availableCategories) {
+    const category = await prisma.category.upsert({
+      where: { id: availableCategory.id },
+      update: {},
+      create: {
+        id: availableCategory.id,
+        name: availableCategory.name,
       },
     })
     categories.push(category)
   }
 
-  // Create 10 Reporters
+  // Create Reporters
   const reporters = []
   const usedReporterNicknames = new Set()
 
-  for (let index = 1; index <= 10; index++) {
+  for (let index = 1; index <= 0; index++) {
     const firstName = faker.person.firstName()
     const lastName = faker.person.lastName()
 
-    // Generate unique nickname
     let nickname = `${firstName.toLowerCase()}_${lastName.toLowerCase()}`
     let counter = 1
     while (usedReporterNicknames.has(nickname)) {
@@ -63,10 +72,10 @@ async function main() {
     reporters.push(reporter)
   }
 
-  // Create 10 Assignees
+  // Create Assignees
   const assignees = []
 
-  for (let index = 1; index <= 10; index++) {
+  for (let index = 1; index <= 0; index++) {
     const firstName = faker.person.firstName()
     const lastName = faker.person.lastName()
 
@@ -79,11 +88,11 @@ async function main() {
     assignees.push(assignee)
   }
 
-  // Create 100 Issues
+  // Create Issues
   const priorities = [1, 2, 3]
-  const statuses = [1, 2, 3, 4] // Corresponding to OPEN, IN_PROGRESS, SKIPPED, CLOSED
+  const statuses = [1, 2, 3, 4]
 
-  for (let index = 1; index <= 100; index++) {
+  for (let index = 1; index <= 0; index++) {
     const randomWhiteLabel =
       whiteLabels[Math.floor(Math.random() * whiteLabels.length)]
     const randomCategory =

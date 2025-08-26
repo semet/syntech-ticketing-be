@@ -9,6 +9,7 @@ import { PrismaClient } from '@generated/prisma'
 interface CreateIssueRequest {
   messageOwnerUsername: string
   reactionEmoji: string
+  description: string
   link: string
   reactorUsername: string
   title: string
@@ -41,25 +42,41 @@ export const TestIssueController = async (c: Context) => {
 
   const body: CreateIssueRequest = await c.req.json()
 
-  // const whitelabel = await prisma.whitelabel.upsert({
-  //   where: { id: body.whitelabel.id },
-  //   update: {
-  //     name: body.whitelabel.name,
-  //     updatedAt: new Date(),
-  //   },
-  //   create: {
-  //     id: body.whitelabel.id,
-  //     name: body.whitelabel.name,
-  //     whitelabelName: body.whitelabel.name,
-  //   },
-  // })
+  await prisma.reporter.upsert({
+    where: { id: body.messageOwnerUsername },
+    update: {},
+    create: {
+      id: body.messageOwnerUsername,
+      name: body.messageOwnerUsername,
+    },
+  })
+
+  const createdIssue = await prisma.issue.create({
+    data: {
+      title: body.title,
+      description: body.description,
+      link: body.link,
+      status: body.status,
+      priority: body.priority,
+      createdAt: new Date(body.messageDate),
+      categoryId: '1', // Will be '3' for Uncategorized
+      whitelabelId: body.whitelabel.id,
+      reporterId: body.messageOwnerUsername,
+    },
+    include: {
+      category: true,
+      whitelabel: true,
+      reporter: true,
+      assignee: true,
+    },
+  })
 
   broadcastIssueUpdate(
     {
       id: body.messageId.toString(),
       category: {
-        id: body.category.id,
-        name: body.category.name,
+        id: '1',
+        name: 'Uncategorized',
       },
       status: body.status,
       priority: body.priority,
@@ -73,18 +90,17 @@ export const TestIssueController = async (c: Context) => {
         id: '',
         name: body.messageOwnerUsername,
       },
-      assignee: {
-        id: '',
-        name: '',
-      },
+      assignee: null,
+      description: body.description,
+      createdAt: new Date(body.messageDate),
     },
     'created',
   )
 
   return c.json({
     success: true,
+    issueId: createdIssue.id,
     message: 'Test issue created and broadcasted',
-    issue: whitelabel,
     activeConnections: getActiveConnectionCount(),
   })
 }

@@ -16,7 +16,7 @@ model Whitelabel {
   updatedAt      DateTime @updatedAt
   issues         Issue[]
 
-  @@map("white_labels") // ✅ correct
+  @@map("white_labels")
 }
 
 model Category {
@@ -30,7 +30,7 @@ model Category {
 }
 
 model Reporter {
-  id        String  @unique
+  id        String   @unique
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,7 +40,7 @@ model Reporter {
 }
 
 model Assignee {
-  id        String  @unique
+  id        String   @unique
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -50,24 +50,23 @@ model Assignee {
 }
 
 model Issue {
-  id               String     @id @default(cuid())
-  title            String
-  description      String
-  link             String
-  status           Int        @default(1)
-  whitelabelId     String
-  whitelabel       Whitelabel @relation(fields: [whitelabelId], references: [id])
-  categoryId       String?
-  category         Category?  @relation(fields: [categoryId], references: [id])
-  reporterId       String
-  reporter         Reporter   @relation(fields: [reporterId], references: [id])
-  assigneeId       String
-  assignee         Assignee   @relation(fields: [assigneeId], references: [id])
-  priority         Int        @default(3)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  finishedAt       DateTime?
+  id           String     @id @default(cuid())
+  title        String
+  description  String
+  link         String
+  status       Int        @default(1)
+  whitelabelId String
+  categoryId   String?
+  reporterId   String
+  assigneeId   String?
+  priority     Int        @default(3)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  finishedAt   DateTime?
+  assignee     Assignee?  @relation(fields: [assigneeId], references: [id])
+  category     Category?  @relation(fields: [categoryId], references: [id])
+  reporter     Reporter   @relation(fields: [reporterId], references: [id])
+  whitelabel   Whitelabel @relation(fields: [whitelabelId], references: [id])
 
   @@map("issues")
 }
-

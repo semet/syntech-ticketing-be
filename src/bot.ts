@@ -3,6 +3,7 @@
 import { Telegraf, Context } from 'telegraf'
 import xior from 'xior'
 
+import { whitelabels } from './constants/whitelabels'
 import { parseMessage } from './utils/functions'
 interface MessageReactionContext extends Context {
   messageReaction: {
@@ -41,6 +42,19 @@ const DEBUG_MODE: boolean = true
 
 // Initialize bot
 const bot = new Telegraf(BOT_TOKEN)
+
+bot.telegram.getMe().then((botInfo) => {
+  console.log('🤖 Bot Info:', botInfo.username)
+
+  bot.telegram.getUpdates({ timeout: 1 }).then((updates) => {
+    if (updates.length > 0) {
+      const lastUpdateId = updates.at(-1).update_id
+      bot.telegram.getUpdates({ offset: lastUpdateId + 1, timeout: 1 })
+      console.log(`Skipped ${updates.length} old updates`)
+    }
+  })
+})
+
 function isChatAllowed(chatId: string | number): boolean {
   if (ALLOWED_CHATS.length === 0) {
     console.warn('⚠️  No allowed chats configured!')
@@ -89,6 +103,12 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
     await context.telegram.deleteMessage(chat.id, forwardedMessage.message_id)
 
     const parsed = parseMessage(messageContent)
+    const merchant = whitelabels.find(
+      (wl) => wl.id === parsed.merchant.toString(),
+    )
+
+    if (!whitelabels.some((wl) => wl.id === parsed.merchant.toString()))
+      return console.error('Whitelabel not found.')
 
     const output = {
       messageOwnerUsername: context.messageReaction.user.username || 'unknown',
@@ -102,17 +122,12 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
       messageDate: new Date(context.messageReaction.date * 1000).toISOString(),
       messageId: context.messageReaction.message_id,
       whitelabel: {
-        id: parsed.whitelabel,
-        name: parsed.merchant.toString(),
+        id: merchant?.id.toString(),
+        name: merchant?.name,
       },
       title: messageContent.slice(0, 26) + '...',
-      assignee: {
-        id: '',
-        name: '',
-      },
       priority: 3,
       status: 1,
-      category: { id: '', name: 'Uncategorized' },
       description: messageContent,
     }
 

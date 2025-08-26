@@ -7,6 +7,7 @@ export interface Issue {
   id: string
   title: string
   status: number
+  description: string
   priority: number
   createdAt: Date
   link: string
@@ -18,11 +19,10 @@ export interface Issue {
     id: string
     name: string
   }
-  assignee?: {
+  assignee: {
     id: string
     name: string
-    email: string
-  }
+  } | null
   reporter?: {
     id: string
     name: string
