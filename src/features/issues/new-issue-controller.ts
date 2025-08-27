@@ -73,7 +73,7 @@ export const TestIssueController = async (c: Context) => {
 
   broadcastIssueUpdate(
     {
-      id: body.messageId.toString(),
+      id: createdIssue.id,
       category: {
         id: '1',
         name: 'Uncategorized',

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
+import moment from 'moment'
 import { Telegraf, Context } from 'telegraf'
 import xior from 'xior'
 
@@ -36,6 +37,7 @@ const ALLOWED_CHATS: string[] = [
   '8289496866',
   '-1002697206987',
   '1002697206987',
+  '-1002878153211',
 ]
 
 const DEBUG_MODE: boolean = true
@@ -43,17 +45,16 @@ const DEBUG_MODE: boolean = true
 // Initialize bot
 const bot = new Telegraf(BOT_TOKEN)
 
-bot.telegram.getMe().then((botInfo) => {
-  console.log('🤖 Bot Info:', botInfo.username)
+const botInfo = await bot.telegram.getMe()
+console.log('🤖 Bot Info:', botInfo.username)
 
-  bot.telegram.getUpdates({ timeout: 1 }).then((updates) => {
-    if (updates.length > 0) {
-      const lastUpdateId = updates.at(-1).update_id
-      bot.telegram.getUpdates({ offset: lastUpdateId + 1, timeout: 1 })
-      console.log(`Skipped ${updates.length} old updates`)
-    }
-  })
-})
+// bot.telegram.getUpdates({ timeout: 1 }).then((updates) => {
+//   if (updates.length > 0) {
+//     const lastUpdateId = updates.at(-1).update_id
+//     // bot.telegram.getUpdates({ offset: lastUpdateId + 1, timeout: 1 })
+//     console.log(`Skipped ${updates.length} old updates`)
+//   }
+// })
 
 function isChatAllowed(chatId: string | number): boolean {
   if (ALLOWED_CHATS.length === 0) {
@@ -117,7 +118,7 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
           .map((r) => r.emoji)
           .filter(Boolean)
           .join(', ') || 'none',
-      link: `https://t.me/c/${context.chat.id}/${context.messageReaction.message_id}`,
+      link: `https://t.me/c/${context.messageReaction.chat.id}/${context.messageReaction.message_id}`,
       reactorUsername: context.messageReaction.user.username || 'unknown',
       messageDate: new Date(context.messageReaction.date * 1000).toISOString(),
       messageId: context.messageReaction.message_id,
@@ -131,7 +132,41 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
       description: messageContent,
     }
 
-    xior.post('http://localhost:3000/stream/issue', output)
+    xior
+      .post('http://localhost:3000/stream/issue', output)
+      .then(async (response) => {
+        const closeButton = {
+          text: 'Done✅',
+          callback_data: `close_${response.data.issueId}`,
+        }
+        const skipButton = {
+          text: 'Skip❌',
+          callback_data: `skip_${response.data.issueId}`,
+        }
+
+        const keyboard = {
+          inline_keyboard: [[skipButton, closeButton]],
+        }
+
+        const originalChatId = context.messageReaction.chat.id
+        const originalMessageId = context.messageReaction.message_id
+        const cleanChatId = String(originalChatId).replace('-100', '')
+
+        const outputFormatted = `<u><b>New Ticket Created</b></u>
+<b>ℹ️ID:</b> #${response.data.issueId}\n
+<b>🔗Link:</b> <a href="https://t.me/c/${cleanChatId}/${originalMessageId}">View Message</a>
+<b>🏢Whitelabel:</b> ${output.whitelabel.name} - merchant ${output.whitelabel.id}
+<b>👤Reported by:</b> @${output.messageOwnerUsername}
+<b>🗓️Date:</b> ${moment(output.messageDate).format('YYYY-MM-DD HH:mm:ss')}
+<b>Status:</b> OPEN⌛
+    `
+
+        bot.telegram.sendMessage('-1002878153211', outputFormatted, {
+          message_thread_id: 2,
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        })
+      })
   } catch (error) {
     console.error('Error processing reaction:', error)
   }
@@ -143,7 +178,7 @@ bot.command('chatid', (context: Context) => {
   if (!chatId) return
 
   const isAllowed = isChatAllowed(chatId)
-  const message = `🆔 Chat ID: \`${chatId}\`\nTracking: ${isAllowed ? '✅' : '❌'}`
+  const message = `🆔 Chat ID: \`${chatId}\`\nTracking: ${isAllowed ? '✅' : '❌'}\n${context?.message?.message_thread_id}`
   context.reply(message, { parse_mode: 'Markdown' })
 })
 
@@ -154,11 +189,73 @@ bot.on('message', (context: Context) => {
   }
 })
 
+bot.on('callback_query', async (context: Context) => {
+  const callbackData = context?.callbackQuery?.data
+  const user = context?.callbackQuery?.from
+
+  if (callbackData.startsWith('close_')) {
+    const issueId = callbackData.split('_')[1]
+
+    xior.post('http://localhost:3000/status', {
+      status: 3,
+      ticketId: issueId,
+    })
+
+    await context.answerCbQuery('Ticket is being closed...')
+
+    const chatId = context.callbackQuery?.message?.chat.id
+    const messageThreadId = context.callbackQuery?.message?.message_thread_id
+
+    const outputFormatted = `<u><b>Ticket Closed</b></u>
+<b>ℹ️ID:</b> #${issueId}\n
+<b>👤Closed By:</b> @${user.username}
+<b>🗓️Closed At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')}
+<b>Status:</b> CLOSED✅
+    `
+
+    await context.telegram.sendMessage(chatId, outputFormatted, {
+      message_thread_id: messageThreadId,
+      parse_mode: 'HTML',
+    })
+  }
+  if (callbackData.startsWith('skip_')) {
+    const issueId = callbackData.split('_')[1]
+
+    xior.post('http://localhost:3000/status', {
+      status: 4,
+      ticketId: issueId,
+    })
+
+    await context.answerCbQuery('Ticket is being skipped...')
+
+    const chatId = context.callbackQuery?.message?.chat.id
+    const messageThreadId = context.callbackQuery?.message?.message_thread_id
+
+    const outputFormatted = `<u><b>Ticket Skipped</b></u>
+<b>ℹ️ID:</b> #${issueId}\n
+<b>👤Skipped By:</b> @${user.username}
+<b>🗓️Skipped At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')}
+<b>Status:</b> SKIPPED❌
+    `
+
+    await context.telegram.sendMessage(chatId, outputFormatted, {
+      message_thread_id: messageThreadId,
+      parse_mode: 'HTML',
+    })
+  }
+})
+
 // Start the bot
 async function startBot(): Promise<void> {
   try {
     await bot.launch({
-      allowedUpdates: ['message', 'message_reaction', 'message_reaction_count'],
+      allowedUpdates: [
+        'message',
+        'message_reaction',
+        'message_reaction_count',
+        'callback_query',
+      ],
+      dropPendingUpdates: true,
     })
     console.log('🚀 Bot started!')
     console.log(`📊 Tracking: ${TRACKED_EMOJIS.join(' ')}`)
