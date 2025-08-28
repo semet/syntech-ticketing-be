@@ -1,13 +1,19 @@
 /* eslint-disable no-console */
+import { eq } from 'drizzle-orm'
 import { Context } from 'hono'
 
+import { db } from '@/db/database' // Your Drizzle database connection
+import {
+  issues,
+  categories,
+  whiteLabels,
+  assignees,
+  reporters,
+} from '@/db/schema'
 import {
   broadcastIssueUpdate,
   getActiveConnectionCount,
 } from '@/features/issues/issue-stream-controller'
-import { PrismaClient } from '@generated/prisma'
-
-const prisma = new PrismaClient()
 
 interface UpdateStatusRequest {
   ticketId: string
@@ -22,17 +28,48 @@ export const IssueStatusUpdateController = async (c: Context) => {
 
     const body: UpdateStatusRequest = await c.req.json()
 
-    const existingTicket = await prisma.issue.findUnique({
-      where: { id: body.ticketId },
-      include: {
-        category: true,
-        whitelabel: true,
-        reporter: true,
-        assignee: true,
-      },
-    })
+    // Find existing ticket with relations
+    const existingTicket = await db
+      .select({
+        id: issues.id,
+        title: issues.title,
+        description: issues.description,
+        link: issues.link,
+        status: issues.status,
+        priority: issues.priority,
+        createdAt: issues.createdAt,
+        updatedAt: issues.updatedAt,
+        finishedAt: issues.finishedAt,
+        whitelabelId: issues.whitelabelId,
+        categoryId: issues.categoryId,
+        reporterId: issues.reporterId,
+        assigneeId: issues.assigneeId,
+        category: {
+          id: categories.id,
+          name: categories.name,
+        },
+        whitelabel: {
+          id: whiteLabels.id,
+          name: whiteLabels.name,
+        },
+        assignee: {
+          id: assignees.id,
+          name: assignees.name,
+        },
+        reporter: {
+          id: reporters.id,
+          name: reporters.name,
+        },
+      })
+      .from(issues)
+      .leftJoin(categories, eq(issues.categoryId, categories.id))
+      .leftJoin(whiteLabels, eq(issues.whitelabelId, whiteLabels.id))
+      .leftJoin(assignees, eq(issues.assigneeId, assignees.id))
+      .leftJoin(reporters, eq(issues.reporterId, reporters.id))
+      .where(eq(issues.id, body.ticketId))
+      .limit(1)
 
-    if (!existingTicket) {
+    if (existingTicket.length === 0) {
       return c.json(
         {
           success: false,
@@ -42,54 +79,92 @@ export const IssueStatusUpdateController = async (c: Context) => {
       )
     }
 
-    const updatedTicket = await prisma.issue.update({
-      where: { id: body.ticketId },
-      data: {
-        status: body.status,
-        updatedAt: new Date(),
-        ...(body.status === 3 && { finishedAt: new Date() }),
-        ...(body.status !== 3 && { finishedAt: null }),
-      },
-      include: {
-        category: true,
-        whitelabel: true,
-        reporter: true,
-        assignee: true,
-      },
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateData: any = {
+      status: body.status,
+      updatedAt: new Date(),
+    }
+
+    // Handle finishedAt based on status
+    updateData.finishedAt = body.status === 3 ? new Date() : null
+
+    await db.update(issues).set(updateData).where(eq(issues.id, body.ticketId))
+
+    // Get the updated ticket with relations
+    const updatedTicketWithRelations = await db
+      .select({
+        id: issues.id,
+        title: issues.title,
+        description: issues.description,
+        link: issues.link,
+        status: issues.status,
+        priority: issues.priority,
+        createdAt: issues.createdAt,
+        updatedAt: issues.updatedAt,
+        finishedAt: issues.finishedAt,
+        whitelabelId: issues.whitelabelId,
+        categoryId: issues.categoryId,
+        reporterId: issues.reporterId,
+        assigneeId: issues.assigneeId,
+        category: {
+          id: categories.id,
+          name: categories.name,
+        },
+        whitelabel: {
+          id: whiteLabels.id,
+          name: whiteLabels.name,
+        },
+        assignee: {
+          id: assignees.id,
+          name: assignees.name,
+        },
+        reporter: {
+          id: reporters.id,
+          name: reporters.name,
+        },
+      })
+      .from(issues)
+      .leftJoin(categories, eq(issues.categoryId, categories.id))
+      .leftJoin(whiteLabels, eq(issues.whitelabelId, whiteLabels.id))
+      .leftJoin(assignees, eq(issues.assigneeId, assignees.id))
+      .leftJoin(reporters, eq(issues.reporterId, reporters.id))
+      .where(eq(issues.id, body.ticketId))
+      .limit(1)
+
+    const finalTicket = updatedTicketWithRelations[0]
 
     // Broadcast the update via SSE
     broadcastIssueUpdate(
       {
-        id: updatedTicket.id,
-        title: updatedTicket.title,
-        status: updatedTicket.status,
-        description: updatedTicket.description,
-        priority: updatedTicket.priority,
-        createdAt: updatedTicket.createdAt,
-        link: updatedTicket.link,
-        category: updatedTicket.category
+        id: finalTicket.id,
+        title: finalTicket.title,
+        status: finalTicket.status,
+        description: finalTicket.description,
+        priority: finalTicket.priority,
+        createdAt: finalTicket.createdAt,
+        link: finalTicket.link,
+        category: finalTicket.category?.id
           ? {
-              id: updatedTicket.category.id,
-              name: updatedTicket.category.name,
+              id: finalTicket.category.id,
+              name: finalTicket.category.name,
             }
           : undefined,
-        whitelabel: updatedTicket.whitelabel
+        whitelabel: finalTicket.whitelabel?.id
           ? {
-              id: updatedTicket.whitelabel.id,
-              name: updatedTicket.whitelabel.name,
+              id: finalTicket.whitelabel.id,
+              name: finalTicket.whitelabel.name,
             }
           : undefined,
-        assignee: updatedTicket.assignee
+        assignee: finalTicket.assignee?.id
           ? {
-              id: updatedTicket.assignee.id,
-              name: updatedTicket.assignee.name,
+              id: finalTicket.assignee.id,
+              name: finalTicket.assignee.name,
             }
           : null,
-        reporter: updatedTicket.reporter
+        reporter: finalTicket.reporter?.id
           ? {
-              id: updatedTicket.reporter.id,
-              name: updatedTicket.reporter.name,
+              id: finalTicket.reporter.id,
+              name: finalTicket.reporter.name,
             }
           : undefined,
       },
@@ -99,7 +174,7 @@ export const IssueStatusUpdateController = async (c: Context) => {
     return c.json({
       success: true,
       message: 'Ticket status updated successfully',
-      ticket: updatedTicket,
+      ticket: finalTicket,
       activeConnections: getActiveConnectionCount(),
     })
   } catch (error) {

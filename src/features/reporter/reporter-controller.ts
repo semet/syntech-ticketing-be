@@ -1,13 +1,15 @@
+import { asc } from 'drizzle-orm'
 import { Context } from 'hono'
 
-import { prisma } from '@/utils/database'
+import { db } from '@/db/database'
+import { reporters } from '@/db/schema'
 
 export const ReporterController = async (c: Context) => {
-  const reporter = await prisma.reporter.findMany({
-    orderBy: {
-      name: 'asc',
-    },
-  })
+  const reporter = await db
+    .select()
+    .from(reporters)
+    .orderBy(asc(reporters.name))
+
   return c.json({
     data: reporter,
   })

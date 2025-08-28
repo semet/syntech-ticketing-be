@@ -1,13 +1,15 @@
+import { desc } from 'drizzle-orm'
 import { Context } from 'hono'
 
-import { prisma } from '@/utils/database'
+import { db } from '@/db/database'
+import { categories } from '@/db/schema'
 
 export const CategoryController = async (c: Context) => {
-  const category = await prisma.category.findMany({
-    orderBy: {
-      createdAt: 'desc',
-    },
-  })
+  const category = await db
+    .select()
+    .from(categories)
+    .orderBy(desc(categories.createdAt))
+
   return c.json({
     data: category,
   })

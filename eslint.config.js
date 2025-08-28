@@ -36,6 +36,15 @@ export default defineConfig([
       ],
       'unicorn/consistent-function-scoping': 'off',
       'unicorn/no-useless-promise-resolve-reject': 'off',
+      'unicorn/prevent-abbreviations': [
+        'error',
+        {
+          allowList: {
+            ctx: true,
+            db: true,
+          },
+        },
+      ],
       'unicorn/no-null': 'off',
       'no-console': 'error',
       'no-empty-pattern': 'off',
