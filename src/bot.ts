@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
-import { eq } from 'drizzle-orm'
+import { eq, and, ne } from 'drizzle-orm'
 import moment from 'moment'
 import { Telegraf, Context } from 'telegraf'
 import xior from 'xior'
@@ -9,7 +9,7 @@ import { db } from '@/db/database'
 import { issues } from '@/db/schema'
 
 import { whitelabels, whitelabelsById } from './constants/whitelabels'
-import { parseMessage } from './utils/functions'
+import { parseSingleLinedMessage } from './utils/functions'
 interface MessageReactionContext extends Context {
   messageReaction: {
     chat: any
@@ -31,20 +31,13 @@ interface MessageReactionContext extends Context {
 // Configuration
 const BOT_TOKEN =
   process.env.BOT_TOKEN || '8289496866:AAE61B49NRbmMCZFbK2yalmNgvPoq1LxB5o'
-const TRACKED_EMOJIS: string[] = ['👍', '❤️', '🔥', '👎', '😂']
+const TRACKED_EMOJIS: string[] = ['❤']
 
-const pendingClosures = new Map() // This should be defined outside the callback
+const pendingClosures = new Map()
 
-const ALLOWED_CHATS: string[] = [
-  // Add your specific chat IDs here
-  // '-1001234567890',
-  // '-1009876543210',
-  '-1002110374869',
-  '8289496866',
-  '-1002697206987',
-  '1002697206987',
-  '-1002878153211',
-]
+const SEND_TO = '-1002878153211'
+
+const ALLOWED_CHATS: string[] = ['-1002110374869']
 
 const DEBUG_MODE: boolean = true
 
@@ -81,7 +74,31 @@ function logChatInfo(context: Context | MessageReactionContext): void {
 bot.on('message_reaction', async (context: MessageReactionContext) => {
   const chat = context.chat
   const messageId = context.messageReaction.message_id
+  const newReactions = context.messageReaction.new_reaction
+  console.log(newReactions)
+
+  // Return early if basic requirements aren't met
   if (!chat || !messageId) return
+
+  // Check if this is an un-reaction (no new reactions or empty reactions)
+  if (!newReactions || newReactions.length === 0) {
+    if (DEBUG_MODE) {
+      console.log('🚫 Message un-reacted, ignoring...')
+    }
+    return
+  }
+
+  // Check if any of the new reactions contain tracked emojis
+  const hasTrackedEmoji = newReactions.some(
+    (reaction) => reaction.emoji && TRACKED_EMOJIS.includes(reaction.emoji),
+  )
+
+  if (!hasTrackedEmoji) {
+    if (DEBUG_MODE) {
+      console.log('🚫 No tracked emojis in reaction, ignoring...')
+    }
+    return
+  }
 
   try {
     logChatInfo(context)
@@ -109,13 +126,25 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
 
     await context.telegram.deleteMessage(chat.id, forwardedMessage.message_id)
 
-    const parsed = parseMessage(messageContent)
+    const parsed = parseSingleLinedMessage(messageContent)
     const merchant = whitelabels.find(
       (wl) => wl.id === parsed.merchant.toString(),
     )
 
     if (!whitelabels.some((wl) => wl.id === parsed.merchant.toString()))
       return console.error('Whitelabel not found.')
+
+    const originalChatId = context.messageReaction.chat.id
+    const originalMessageId = context.messageReaction.message_id
+    let cleanChatId = String(originalChatId)
+    if (cleanChatId.startsWith('-100')) {
+      cleanChatId = cleanChatId.slice(4)
+    }
+    const threadId = context.messageReaction.message_thread_id
+
+    const messageLink = threadId
+      ? `https://t.me/c/${cleanChatId}/${threadId}/${originalMessageId}`
+      : `https://t.me/c/${cleanChatId}/${originalMessageId}`
 
     const output = {
       messageOwnerUsername: context.messageReaction.user.username || 'unknown',
@@ -124,7 +153,7 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
           .map((r) => r.emoji)
           .filter(Boolean)
           .join(', ') || 'none',
-      link: `https://t.me/c/${context.messageReaction.chat.id}/${context.messageReaction.message_id}`,
+      link: messageLink,
       reactorUsername: context.messageReaction.user.username || 'unknown',
       messageDate: new Date(context.messageReaction.date * 1000).toISOString(),
       messageId: context.messageReaction.message_id,
@@ -177,7 +206,7 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
     `
 
         bot.telegram
-          .sendMessage('-1002878153211', outputFormatted, {
+          .sendMessage(SEND_TO, outputFormatted, {
             message_thread_id: 2,
             parse_mode: 'HTML',
             reply_markup: keyboard,
@@ -187,17 +216,49 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
             const issueList = await db
               .select()
               .from(issues)
-              .where(eq(issues.status, 1))
-            issueList.map((issue, index) => {
-              ticketQueueOutput += `${index}. WL ${whitelabelsById[Number(issue.whitelabelId)]} MERCHANT ${issue.whitelabelId}\n`
+              .where(
+                and(eq(issues.status, 1), ne(issues.id, response.data.issueId)),
+              )
+            issueList.map((issue) => {
+              ticketQueueOutput += `#${issue.id} WL ${whitelabelsById[Number(issue.whitelabelId)]} MERCHANT ${issue.whitelabelId}\n${issue.link}\n• ${moment(issue.createdAt).format('YYYY-MM-DD HH:mm:ss')}\n\n`
             })
 
-            console.log('ticketQueueOutput', ticketQueueOutput)
+            ticketQueueOutput += `#${response.data.issueId} WL ${output.whitelabel.name} MERCHANT ${output.whitelabel.id} (OPEN)\n${messageLink}\n• ${moment(output.messageDate).format('YYYY-MM-DD HH:mm:ss')}`
+
+            bot.telegram.sendMessage(SEND_TO, ticketQueueOutput, {
+              parse_mode: 'HTML',
+            })
           })
       })
   } catch (error) {
     console.error('Error processing reaction:', error)
   }
+})
+
+bot.command('issues', async (context: Context) => {
+  const chatId = context.chat?.id?.toString()
+  if (!chatId) return
+
+  let outputMessage = ``
+  const issueList = await db.select().from(issues).where(eq(issues.status, 1))
+  issueList.map((issue) => {
+    outputMessage += `#${issue.id} WL ${whitelabelsById[Number(issue.whitelabelId)]} MERCHANT ${issue.whitelabelId}\n${issue.link}\n• ${moment(issue.createdAt).format('YYYY-MM-DD HH:mm:ss')}\n\n`
+  })
+  context.reply(
+    outputMessage.length > 0 ? outputMessage : 'No ongoing issues!',
+    { parse_mode: 'HTML' },
+  )
+})
+
+bot.command('wl', (context: Context) => {
+  const chatId = context.chat?.id?.toString()
+  if (!chatId) return
+
+  let outputMessage = `<b>Merchant - Whitelabel - Total Tickets</b>\n`
+  whitelabels.map((wl) => {
+    outputMessage += `${wl.id} - ${wl.name} - ${0}\n`
+  })
+  context.reply(outputMessage, { parse_mode: 'HTML' })
 })
 
 // Command to get current chat ID
@@ -251,6 +312,39 @@ bot.on('message', async (context: Context) => {
         // Delete the user's reply message
         try {
           await context.deleteMessage()
+          const currentIssue: {
+            id: string
+            title: string
+            description: string
+            link: string
+            status: number
+            whitelabelId: string
+            categoryId: string | null
+            reporterId: string
+            assigneeId: string | null
+            priority: number
+            createdAt: Date
+            updatedAt: Date
+            finishedAt: Date | null
+          }[] = await db
+            .select()
+            .from(issues)
+            .where(eq(issues.id, issueId))
+            .limit(1)
+          let ticketQueueOutput = ``
+          const issueList = await db
+            .select()
+            .from(issues)
+            .where(eq(issues.status, 1))
+          issueList.map((issue) => {
+            ticketQueueOutput += `#${issue.id}. WL ${whitelabelsById[Number(issue.whitelabelId)]} MERCHANT ${issue.whitelabelId}\n${issue.link}\n• ${moment(issue.createdAt).format('YYYY-MM-DD HH:mm:ss')}\n\n`
+          })
+
+          ticketQueueOutput += `#${currentIssue[0].id} WL ${whitelabelsById[Number(currentIssue[0].whitelabelId)]} MERCHANT ${currentIssue[0].whitelabelId} (CLOSED)\n${currentIssue[0].link}\n• ${moment(currentIssue[0].createdAt).format('YYYY-MM-DD HH:mm:ss')}`
+
+          bot.telegram.sendMessage(SEND_TO, ticketQueueOutput, {
+            parse_mode: 'HTML',
+          })
         } catch (error) {
           console.error('Failed to delete user reply:', error)
         }
@@ -302,8 +396,7 @@ bot.on('callback_query', async (context: Context) => {
     // You'll need to implement a way to track this state
     // For example, using a Map or database to store pending closures
     pendingClosures.set(user.id, { issueId, user, chatId, messageThreadId })
-
-    return // Don't close the ticket yet
+    return
   }
 
   if (callbackData.startsWith('skip_')) {
@@ -323,7 +416,7 @@ bot.on('callback_query', async (context: Context) => {
     const chatId = context.callbackQuery?.message?.chat.id
     const messageThreadId = context.callbackQuery?.message?.message_thread_id
 
-    const outputFormatted = `<u><b>Ticket Skipped</b></u> <b>ℹ️ID:</b> #${issueId}\n <b>👤Skipped By:</b> @${user.username} <b>🗓️Skipped At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')} <b>Status:</b> SKIPPED❌`
+    const outputFormatted = `<u><b>Ticket Skipped</b></u> <b>ℹ️ID:</b> #${issueId}\n <b>👤Skipped By:</b> @${user?.username} <b>🗓️Skipped At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')} <b>Status:</b> SKIPPED❌`
 
     await context.telegram.sendMessage(chatId, outputFormatted, {
       message_thread_id: messageThreadId,

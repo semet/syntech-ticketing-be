@@ -37,9 +37,7 @@ export const assignees = pgTable('assignees', {
 })
 
 export const issues = pgTable('issues', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId()),
+  id: text('id').primaryKey(), // ← no default function
   title: text('title').notNull(),
   description: text('description').notNull(),
   link: text('link').notNull(),
