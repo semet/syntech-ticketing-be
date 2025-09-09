@@ -1,10 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-console */
+import { eq } from 'drizzle-orm'
 import moment from 'moment'
 import { Telegraf, Context } from 'telegraf'
 import xior from 'xior'
 
-import { whitelabels } from './constants/whitelabels'
+import { db } from '@/db/database'
+import { issues } from '@/db/schema'
+
+import { whitelabels, whitelabelsById } from './constants/whitelabels'
 import { parseMessage } from './utils/functions'
 interface MessageReactionContext extends Context {
   messageReaction: {
@@ -28,6 +32,8 @@ interface MessageReactionContext extends Context {
 const BOT_TOKEN =
   process.env.BOT_TOKEN || '8289496866:AAE61B49NRbmMCZFbK2yalmNgvPoq1LxB5o'
 const TRACKED_EMOJIS: string[] = ['👍', '❤️', '🔥', '👎', '😂']
+
+const pendingClosures = new Map() // This should be defined outside the callback
 
 const ALLOWED_CHATS: string[] = [
   // Add your specific chat IDs here
@@ -150,22 +156,44 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
 
         const originalChatId = context.messageReaction.chat.id
         const originalMessageId = context.messageReaction.message_id
-        const cleanChatId = String(originalChatId).replace('-100', '')
+        let cleanChatId = String(originalChatId)
+        if (cleanChatId.startsWith('-100')) {
+          cleanChatId = cleanChatId.slice(4) // Remove '-100' prefix
+        }
+
+        const threadId = context.messageReaction.message_thread_id
+
+        const messageLink = threadId
+          ? `https://t.me/c/${cleanChatId}/${threadId}/${originalMessageId}`
+          : `https://t.me/c/${cleanChatId}/${originalMessageId}`
 
         const outputFormatted = `<u><b>New Ticket Created</b></u>
 <b>ℹ️ID:</b> #${response.data.issueId}\n
-<b>🔗Link:</b> <a href="https://t.me/c/${cleanChatId}/${originalMessageId}">View Message</a>
+<b>🔗Link:</b> <a href="${messageLink}">Message</a>
 <b>🏢Whitelabel:</b> ${output.whitelabel.name} - merchant ${output.whitelabel.id}
 <b>👤Reported by:</b> @${output.messageOwnerUsername}
 <b>🗓️Date:</b> ${moment(output.messageDate).format('YYYY-MM-DD HH:mm:ss')}
 <b>Status:</b> OPEN⌛
     `
 
-        bot.telegram.sendMessage('-1002878153211', outputFormatted, {
-          message_thread_id: 2,
-          parse_mode: 'HTML',
-          reply_markup: keyboard,
-        })
+        bot.telegram
+          .sendMessage('-1002878153211', outputFormatted, {
+            message_thread_id: 2,
+            parse_mode: 'HTML',
+            reply_markup: keyboard,
+          })
+          .then(async (newMessageThread) => {
+            let ticketQueueOutput = ``
+            const issueList = await db
+              .select()
+              .from(issues)
+              .where(eq(issues.status, 1))
+            issueList.map((issue, index) => {
+              ticketQueueOutput += `${index}. WL ${whitelabelsById[Number(issue.whitelabelId)]} MERCHANT ${issue.whitelabelId}\n`
+            })
+
+            console.log('ticketQueueOutput', ticketQueueOutput)
+          })
       })
   } catch (error) {
     console.error('Error processing reaction:', error)
@@ -183,9 +211,61 @@ bot.command('chatid', (context: Context) => {
 })
 
 // Handle any message to log chat info
-bot.on('message', (context: Context) => {
-  if (DEBUG_MODE) {
-    logChatInfo(context)
+bot.on('message', async (context: Context) => {
+  const message = context.message
+
+  // Check if this is a reply to our message link prompt
+  if (message?.reply_to_message && message.text) {
+    const replyText = message.reply_to_message.text
+
+    // Check if the replied message is asking for a message link
+    if (replyText?.includes('Please enter the message link for ticket')) {
+      const userId = message.from.id
+
+      // Retrieve the pending closure info
+      const pendingClosure = pendingClosures.get(userId)
+
+      if (pendingClosure) {
+        const { issueId, user, chatId, messageThreadId } = pendingClosure
+        const messageLink = message.text
+
+        console.log(messageLink)
+
+        // Now close the ticket with the message link
+        xior.post('http://localhost:3000/status', {
+          status: 3,
+          ticketId: issueId,
+          messageLink: messageLink, // Include the message link in your API call
+        })
+
+        const outputFormatted = `<u><b>Ticket Closed</b></u>\n<b>ℹ️ID:</b> #${issueId}\n\n<b>👤Closed By:</b> @${user.username}\n<b>🗓️Closed At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')} <b>\n🔗Link:</b> ${messageLink}\n<b>Status:</b> CLOSED✅`
+
+        await context.telegram.sendMessage(chatId, outputFormatted, {
+          message_thread_id: messageThreadId,
+          parse_mode: 'HTML',
+        })
+
+        // Clean up the pending closure
+        pendingClosures.delete(userId)
+
+        // Delete the user's reply message
+        try {
+          await context.deleteMessage()
+        } catch (error) {
+          console.error('Failed to delete user reply:', error)
+        }
+
+        // Delete the bot's prompt message
+        try {
+          await context.telegram.deleteMessage(
+            chatId,
+            message.reply_to_message.message_id,
+          )
+        } catch (error) {
+          console.error('Failed to delete bot prompt message:', error)
+        }
+      }
+    }
   }
 })
 
@@ -196,30 +276,42 @@ bot.on('callback_query', async (context: Context) => {
   if (callbackData.startsWith('close_')) {
     const issueId = callbackData.split('_')[1]
 
-    xior.post('http://localhost:3000/status', {
-      status: 3,
-      ticketId: issueId,
+    await context.editMessageReplyMarkup({
+      reply_markup: { inline_keyboard: [] },
     })
 
-    await context.answerCbQuery('Ticket is being closed...')
+    await context.answerCbQuery('Please enter the message link...')
 
+    // Send a prompt message asking for the message link
     const chatId = context.callbackQuery?.message?.chat.id
     const messageThreadId = context.callbackQuery?.message?.message_thread_id
 
-    const outputFormatted = `<u><b>Ticket Closed</b></u>
-<b>ℹ️ID:</b> #${issueId}\n
-<b>👤Closed By:</b> @${user.username}
-<b>🗓️Closed At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')}
-<b>Status:</b> CLOSED✅
-    `
+    await context.telegram.sendMessage(
+      chatId,
+      `Please enter the message link for ticket #${issueId}:`,
+      {
+        message_thread_id: messageThreadId,
+        reply_markup: {
+          force_reply: true,
+          input_field_placeholder: 'Enter message link here...',
+        },
+      },
+    )
 
-    await context.telegram.sendMessage(chatId, outputFormatted, {
-      message_thread_id: messageThreadId,
-      parse_mode: 'HTML',
-    })
+    // Store the issueId and user info for later use
+    // You'll need to implement a way to track this state
+    // For example, using a Map or database to store pending closures
+    pendingClosures.set(user.id, { issueId, user, chatId, messageThreadId })
+
+    return // Don't close the ticket yet
   }
+
   if (callbackData.startsWith('skip_')) {
     const issueId = callbackData.split('_')[1]
+
+    await context.editMessageReplyMarkup({
+      reply_markup: { inline_keyboard: [] },
+    })
 
     xior.post('http://localhost:3000/status', {
       status: 4,
@@ -231,12 +323,7 @@ bot.on('callback_query', async (context: Context) => {
     const chatId = context.callbackQuery?.message?.chat.id
     const messageThreadId = context.callbackQuery?.message?.message_thread_id
 
-    const outputFormatted = `<u><b>Ticket Skipped</b></u>
-<b>ℹ️ID:</b> #${issueId}\n
-<b>👤Skipped By:</b> @${user.username}
-<b>🗓️Skipped At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')}
-<b>Status:</b> SKIPPED❌
-    `
+    const outputFormatted = `<u><b>Ticket Skipped</b></u> <b>ℹ️ID:</b> #${issueId}\n <b>👤Skipped By:</b> @${user.username} <b>🗓️Skipped At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')} <b>Status:</b> SKIPPED❌`
 
     await context.telegram.sendMessage(chatId, outputFormatted, {
       message_thread_id: messageThreadId,
