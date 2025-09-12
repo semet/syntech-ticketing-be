@@ -23,8 +23,8 @@ interface MessageReactionContext extends Context {
       language_code: string
     }
     date: number
-    old_reaction: Array<{ type: string; emoji?: string }>
-    new_reaction: Array<{ type: string; emoji?: string }>
+    old_reaction: any
+    new_reaction: any
   }
 }
 
@@ -71,7 +71,7 @@ function logChatInfo(context: Context | MessageReactionContext): void {
   }
 }
 
-bot.on('message_reaction', async (context: MessageReactionContext) => {
+bot.on('message_reaction', async (context: any) => {
   const chat = context.chat
   const messageId = context.messageReaction.message_id
   const newReactions = context.messageReaction.new_reaction
@@ -90,7 +90,8 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
 
   // Check if any of the new reactions contain tracked emojis
   const hasTrackedEmoji = newReactions.some(
-    (reaction) => reaction.emoji && TRACKED_EMOJIS.includes(reaction.emoji),
+    (reaction: any) =>
+      reaction.emoji && TRACKED_EMOJIS.includes(reaction.emoji),
   )
 
   if (!hasTrackedEmoji) {
@@ -130,6 +131,9 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
     const merchant = whitelabels.find(
       (wl) => wl.id === parsed.merchant.toString(),
     )
+    console.log(messageContent)
+
+    console.log(parsed)
 
     if (!whitelabels.some((wl) => wl.id === parsed.merchant.toString()))
       return console.error('Whitelabel not found.')
@@ -150,7 +154,7 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
       messageOwnerUsername: context.messageReaction.user.username || 'unknown',
       reactionEmoji:
         context.messageReaction.new_reaction
-          .map((r) => r.emoji)
+          .map((r: any) => r.emoji)
           .filter(Boolean)
           .join(', ') || 'none',
       link: messageLink,
@@ -211,7 +215,7 @@ bot.on('message_reaction', async (context: MessageReactionContext) => {
             parse_mode: 'HTML',
             reply_markup: keyboard,
           })
-          .then(async (newMessageThread) => {
+          .then(async () => {
             let ticketQueueOutput = ``
             const issueList = await db
               .select()
@@ -273,7 +277,7 @@ bot.command('chatid', (context: Context) => {
 
 // Handle any message to log chat info
 bot.on('message', async (context: Context) => {
-  const message = context.message
+  const message = context.message as any
 
   // Check if this is a reply to our message link prompt
   if (message?.reply_to_message && message.text) {
@@ -364,13 +368,14 @@ bot.on('message', async (context: Context) => {
 })
 
 bot.on('callback_query', async (context: Context) => {
-  const callbackData = context?.callbackQuery?.data
+  const callbackData = (context?.callbackQuery as any)?.data
   const user = context?.callbackQuery?.from
 
   if (callbackData.startsWith('close_')) {
     const issueId = callbackData.split('_')[1]
 
     await context.editMessageReplyMarkup({
+      // @ts-expect-error Object literal may only specify known properties
       reply_markup: { inline_keyboard: [] },
     })
 
@@ -378,10 +383,11 @@ bot.on('callback_query', async (context: Context) => {
 
     // Send a prompt message asking for the message link
     const chatId = context.callbackQuery?.message?.chat.id
-    const messageThreadId = context.callbackQuery?.message?.message_thread_id
+    const messageThreadId = (context.callbackQuery?.message as any)
+      ?.message_thread_id
 
     await context.telegram.sendMessage(
-      chatId,
+      chatId as unknown as string,
       `Please enter the message link for ticket #${issueId}:`,
       {
         message_thread_id: messageThreadId,
@@ -395,7 +401,7 @@ bot.on('callback_query', async (context: Context) => {
     // Store the issueId and user info for later use
     // You'll need to implement a way to track this state
     // For example, using a Map or database to store pending closures
-    pendingClosures.set(user.id, { issueId, user, chatId, messageThreadId })
+    pendingClosures.set(user?.id, { issueId, user, chatId, messageThreadId })
     return
   }
 
@@ -403,6 +409,7 @@ bot.on('callback_query', async (context: Context) => {
     const issueId = callbackData.split('_')[1]
 
     await context.editMessageReplyMarkup({
+      // @ts-expect-error Object literal may only specify known properties
       reply_markup: { inline_keyboard: [] },
     })
 
@@ -414,14 +421,19 @@ bot.on('callback_query', async (context: Context) => {
     await context.answerCbQuery('Ticket is being skipped...')
 
     const chatId = context.callbackQuery?.message?.chat.id
-    const messageThreadId = context.callbackQuery?.message?.message_thread_id
+    const messageThreadId = (context.callbackQuery?.message as any)
+      ?.message_thread_id
 
     const outputFormatted = `<u><b>Ticket Skipped</b></u> <b>ℹ️ID:</b> #${issueId}\n <b>👤Skipped By:</b> @${user?.username} <b>🗓️Skipped At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')} <b>Status:</b> SKIPPED❌`
 
-    await context.telegram.sendMessage(chatId, outputFormatted, {
-      message_thread_id: messageThreadId,
-      parse_mode: 'HTML',
-    })
+    await context.telegram.sendMessage(
+      chatId as unknown as any,
+      outputFormatted,
+      {
+        message_thread_id: messageThreadId,
+        parse_mode: 'HTML',
+      },
+    )
   }
 })
 

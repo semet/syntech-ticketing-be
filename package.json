@@ -8,11 +8,11 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsx",
     "start": "concurrently \"pnpm bot\" \"pnpm dev\"",
     "format": "prettier --write .",
     "knip": "knip",
-    "validate": "eslint . && prettier --check . && tsc --noEmit && knip",
+    "validate": "eslint . && prettier --check . && tsx --noEmit && knip",
     "prepare": "husky",
     "bot": "tsx watch src/bot.ts"
   },

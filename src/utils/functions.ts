@@ -10,14 +10,13 @@ export function parseMessage(input: string) {
 }
 
 export function parseSingleLinedMessage(input: string) {
-  // Match "<whitelabel> / merchant <number>" at the start of the string
-  const match = input.match(/^(.+?)\s*\/\s*merchant\s+(\d+)/i)
+  const match = input.match(/(.+?)\s*\/\s*merchant\s+(\d+)/i)
 
   if (match) {
     return {
       whitelabel: match[1].trim(),
       merchant: Number(match[2]),
-      description: input.slice(match[0].length).trim(),
+      description: input.slice(match.index! + match[0].length).trim(),
     }
   }
 
