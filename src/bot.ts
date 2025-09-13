@@ -30,14 +30,14 @@ interface MessageReactionContext extends Context {
 
 // Configuration
 const BOT_TOKEN =
-  process.env.BOT_TOKEN || '8289496866:AAE61B49NRbmMCZFbK2yalmNgvPoq1LxB5o'
-const TRACKED_EMOJIS: string[] = ['❤']
+  process.env.BOT_TOKEN || '8150617589:AAEnNAIxf-x8WK18sWnnJmYVVJWbH89SJBw'
+const TRACKED_EMOJIS: string[] = ['🔥']
 
 const pendingClosures = new Map()
 
-const SEND_TO = '-1002878153211'
+const SEND_TO = process.env.SEND_TO || '-1002878153211'
 
-const ALLOWED_CHATS: string[] = ['-1002110374869']
+const ALLOWED_CHATS: string[] = [process.env.CHAT_ID || '']
 
 const DEBUG_MODE: boolean = true
 
@@ -211,7 +211,6 @@ bot.on('message_reaction', async (context: any) => {
 
         bot.telegram
           .sendMessage(SEND_TO, outputFormatted, {
-            message_thread_id: 2,
             parse_mode: 'HTML',
             reply_markup: keyboard,
           })
@@ -273,6 +272,91 @@ bot.command('chatid', (context: Context) => {
   const isAllowed = isChatAllowed(chatId)
   const message = `🆔 Chat ID: \`${chatId}\`\nTracking: ${isAllowed ? '✅' : '❌'}\n${context?.message?.message_thread_id}`
   context.reply(message, { parse_mode: 'Markdown' })
+})
+
+// Command to get current chat ID
+bot.command('close', async (context: Context) => {
+  const chatId = context.chat?.id?.toString()
+  if (!chatId) return
+
+  // Get the command arguments
+  const arguments_ = (context.message as any)?.text?.split(' ') || []
+
+  // Check if we have the required arguments: /close #TS1 link
+  if (arguments_.length < 3) {
+    await context.reply(
+      'Usage: /close #ticketId messageLink\nExample: /close #TS1 https://t.me/c/...',
+      { parse_mode: 'HTML' },
+    )
+    return
+  }
+
+  // Extract ticket ID and message link
+  let ticketIdArgument = arguments_[1]
+  const messageLink = arguments_[2]
+
+  // Remove the # if present
+  if (ticketIdArgument.startsWith('#')) {
+    ticketIdArgument = ticketIdArgument.slice(1)
+  }
+
+  const ticketId = ticketIdArgument
+
+  try {
+    const existingTicket = await db
+      .select()
+      .from(issues)
+      .where(eq(issues.id, ticketId.toString()))
+      .limit(1)
+
+    if (existingTicket.length === 0) {
+      await context.reply(`Ticket #${ticketId} not found.`)
+      return
+    }
+
+    if (existingTicket[0].status !== 1) {
+      await context.reply(
+        `Ticket #${ticketId} is not open (current status: ${existingTicket[0].status}).`,
+      )
+      return
+    }
+
+    // Close the ticket
+    await xior.post('http://localhost:3000/status', {
+      status: 3,
+      ticketId: ticketId,
+      messageLink: messageLink,
+    })
+
+    const user = context.from
+
+    const outputFormatted = `<u><b>Ticket Closed</b></u>
+<b>ℹ️ID:</b> #${ticketId}
+
+<b>👤Closed By:</b> @${user?.username || 'unknown'}
+<b>🗓️Closed At:</b> ${moment(new Date()).format('YYYY-MM-DD HH:mm:ss')}
+<b>🔗Link:</b> ${messageLink}
+<b>Status:</b> CLOSED✅`
+
+    await context.reply(outputFormatted, { parse_mode: 'HTML' })
+
+    // Send updated queue to the main channel
+    let ticketQueueOutput = ``
+    const issueList = await db.select().from(issues).where(eq(issues.status, 1))
+
+    issueList.map((issue) => {
+      ticketQueueOutput += `#${issue.id} WL ${whitelabelsById[Number(issue.whitelabelId)]} MERCHANT ${issue.whitelabelId}\n${issue.link}\n• ${moment(issue.createdAt).format('YYYY-MM-DD HH:mm:ss')}\n\n`
+    })
+
+    ticketQueueOutput += `#${existingTicket[0].id} WL ${whitelabelsById[Number(existingTicket[0].whitelabelId)]} MERCHANT ${existingTicket[0].whitelabelId} (CLOSED)\n${existingTicket[0].link}\n• ${moment(existingTicket[0].createdAt).format('YYYY-MM-DD HH:mm:ss')}`
+
+    bot.telegram.sendMessage(SEND_TO, ticketQueueOutput, {
+      parse_mode: 'HTML',
+    })
+  } catch (error) {
+    console.error('Error closing ticket:', error)
+    await context.reply(`Error closing ticket #${ticketId}. Please try again.`)
+  }
 })
 
 // Handle any message to log chat info
