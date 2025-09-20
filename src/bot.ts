@@ -28,22 +28,42 @@ interface MessageReactionContext extends Context {
   }
 }
 
+const normalizeEmoji = (string_: string): string => {
+  return string_.replaceAll('\uFE0F', '')
+}
+
 // Configuration
-const BOT_TOKEN =
-  process.env.BOT_TOKEN || '8289496866:AAE61B49NRbmMCZFbK2yalmNgvPoq1LxB5o'
-const TRACKED_EMOJIS: string[] = ['❤']
+const BOT_TOKEN = '8150617589:AAEnNAIxf-x8WK18sWnnJmYVVJWbH89SJBw'
+const TRACKED_EMOJIS: string[] = ['👌️'].map((element) =>
+  normalizeEmoji(element),
+)
 
 const pendingClosures = new Map()
 
-const SEND_TO = '-1002539873871'
+// PROD
+// const SEND_TO = '-1002539873871'
+// const ALLOWED_CHATS: string[] = ['-1002110374869']
 
-const ALLOWED_CHATS: string[] = ['-1002110374869']
+// DEV
+const SEND_TO = '-1002878153211'
+const ALLOWED_CHATS: string[] = ['-1002878153211']
 
-const ALLOWED_USERS: string[] = ['8128602833',
-'7667483265',
-'6373256425',
-'6210284305',
-'7337962538','7314435580','7667483265','6844408553','6356287362','1114154267', '8349323678','5301765715','1114154267']
+// eslint-disable-next-line unicorn/prefer-set-has
+const ALLOWED_USERS: string[] = [
+  '8128602833',
+  '7667483265',
+  '6373256425',
+  '6210284305',
+  '7337962538',
+  '7314435580',
+  '7667483265',
+  '6844408553',
+  '6356287362',
+  '1114154267',
+  '8349323678',
+  '5301765715',
+  '1114154267',
+]
 
 const DEBUG_MODE: boolean = true
 
@@ -87,7 +107,7 @@ bot.on('message_reaction', async (context: any) => {
   if (!chat || !messageId) return
 
   if (!ALLOWED_USERS.includes(reactorUserId)) {
-      console.log(`🚫 Ignoring reaction from non-allowed user: ${reactorUserId}`)
+    console.log(`🚫 Ignoring reaction from non-allowed user: ${reactorUserId}`)
     return
   }
 
@@ -142,9 +162,6 @@ bot.on('message_reaction', async (context: any) => {
     const merchant = whitelabels.find(
       (wl) => wl.id === parsed.merchant.toString(),
     )
-    console.log(messageContent)
-
-    console.log(parsed)
 
     if (!whitelabels.some((wl) => wl.id === parsed.merchant.toString()))
       return console.error('Whitelabel not found.')
@@ -422,8 +439,6 @@ bot.on('message', async (context: Context) => {
       if (pendingClosure) {
         const { issueId, user, chatId, messageThreadId } = pendingClosure
         const messageLink = message.text
-
-        console.log(messageLink)
 
         // Now close the ticket with the message link
         xior.post('http://localhost:3000/status', {
