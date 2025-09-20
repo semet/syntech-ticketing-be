@@ -1,4 +1,6 @@
 export const whitelabels = [
+  { id: '0', name: 'SETTLEMENT' },
+  { id: '2', name: 'macho69' },
   { id: '3', name: 'hawai99' },
   { id: '4', name: 'napi69' },
   { id: '5', name: 'depot69' },
@@ -109,6 +111,8 @@ export const whitelabels = [
 ]
 
 export const whitelabelsById: Record<number, string> = {
+  0: 'SETTLEMENT',
+  2: 'macho69',
   3: 'hawai99',
   4: 'napi69',
   5: 'depot69',

@@ -30,14 +30,20 @@ interface MessageReactionContext extends Context {
 
 // Configuration
 const BOT_TOKEN =
-  process.env.BOT_TOKEN || '8150617589:AAEnNAIxf-x8WK18sWnnJmYVVJWbH89SJBw'
-const TRACKED_EMOJIS: string[] = ['🔥']
+  process.env.BOT_TOKEN || '8289496866:AAE61B49NRbmMCZFbK2yalmNgvPoq1LxB5o'
+const TRACKED_EMOJIS: string[] = ['❤']
 
 const pendingClosures = new Map()
 
-const SEND_TO = process.env.SEND_TO || '-1002878153211'
+const SEND_TO = '-1002539873871'
 
-const ALLOWED_CHATS: string[] = [process.env.CHAT_ID || '']
+const ALLOWED_CHATS: string[] = ['-1002110374869']
+
+const ALLOWED_USERS: string[] = ['8128602833',
+'7667483265',
+'6373256425',
+'6210284305',
+'7337962538','7314435580','7667483265','6844408553','6356287362','1114154267', '8349323678','5301765715','1114154267']
 
 const DEBUG_MODE: boolean = true
 
@@ -75,10 +81,15 @@ bot.on('message_reaction', async (context: any) => {
   const chat = context.chat
   const messageId = context.messageReaction.message_id
   const newReactions = context.messageReaction.new_reaction
-  console.log(newReactions)
+  const reactorUserId = context.messageReaction.user.id.toString()
 
   // Return early if basic requirements aren't met
   if (!chat || !messageId) return
+
+  if (!ALLOWED_USERS.includes(reactorUserId)) {
+      console.log(`🚫 Ignoring reaction from non-allowed user: ${reactorUserId}`)
+    return
+  }
 
   // Check if this is an un-reaction (no new reactions or empty reactions)
   if (!newReactions || newReactions.length === 0) {
@@ -105,7 +116,7 @@ bot.on('message_reaction', async (context: any) => {
     logChatInfo(context)
     if (!isChatAllowed(context.chat.id)) {
       if (DEBUG_MODE) {
-        console.log(`🚫 Ignoring reaction from non-tracked chat: ${chat}`)
+        console.log(`🚫 Ignoring reaction from non-tracked chat: ${chat.id}`)
       }
       return
     }
@@ -272,6 +283,40 @@ bot.command('chatid', (context: Context) => {
   const isAllowed = isChatAllowed(chatId)
   const message = `🆔 Chat ID: \`${chatId}\`\nTracking: ${isAllowed ? '✅' : '❌'}\n${context?.message?.message_thread_id}`
   context.reply(message, { parse_mode: 'Markdown' })
+})
+
+bot.command('users', async (context: Context) => {
+  const targetChatId = '-1002878153211'
+
+  try {
+    // Get chat administrators (you can modify this based on your needs)
+    const chatAdmins = await context.telegram.getChatAdministrators(
+      context.chat!.id,
+    )
+
+    // Map users to the desired format
+    const usersList = chatAdmins
+      .map((admin) => {
+        const user = admin.user
+        const name =
+          user.first_name + (user.last_name ? ` ${user.last_name}` : '')
+        return `${name} - \`${user.id}\``
+      })
+      .join('\n')
+
+    const message = `👥 Users:\n${usersList}`
+
+    // Send to specific chat instead of current chat
+    await context.telegram.sendMessage(targetChatId, message, {
+      parse_mode: 'Markdown',
+    })
+
+    // Optional: Send confirmation to current chat
+    // await context.reply('✅ Users list sent to monitoring chat')
+  } catch (error) {
+    console.error('Error fetching users:', error)
+    await context.reply('❌ Error fetching users list')
+  }
 })
 
 // Command to get current chat ID
